@@ -1,0 +1,277 @@
+---
+title: ' Lab 2'
+author: "BKN680 Spring 2024"
+date: "Jan. 17, 2024"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(dplyr) # for piping
+
+library(ggplot2)
+library(patchwork)
+
+# install.packages("ISLR") # uncomment to install the package
+library(ISLR)
+```
+
+```{r, include=FALSE}
+
+
+rm(list=ls()) 
+graphics.off() 
+cat("\014") 
+
+```
+
+# Figure 3.2: Contour of RSS on the `Advertising` data
+```{r}
+# load data
+Ads <- read.csv("Advertising.csv", row.names = 1)
+
+lm_1=lm(sales ~ TV, data = Ads) #from the advertising dataset, we run a linear model, regressing sales onto TV
+summary(lm_1) #provide a summary of the linear model 
+
+#b0 (intercept) and b1 (slope) are the unknown constants in the linear model. Together, these are known as the model coefficients or parameters. 
+
+lm_1$coefficients
+b0_opt <- lm_1$coefficients[1] #intercept 
+b1_opt <- lm_1$coefficients[2] #slope 
+
+rss_opt <- sum((Ads$sales-b0_opt-b1_opt*Ads$TV)^2) #sum of the residuals squared. This approach chooses the b0 and b1 to minimize the sum of squared errors. 
+
+```
+
+```{r For loop to generate rss_matrix}
+  
+num_samples <- 50 #generating 50 random samples 
+
+
+x <- Ads$TV #predictor variable 
+y <- Ads$sales #response variable 
+
+# Initialize arrays to store random samples
+b0_array <- seq(5, 9, length.out = num_samples) #array having 50 samples length within range 5-9
+b1_array <- seq(0.03, 0.07, length.out = num_samples) #array having 50 samples length within range 0.03 - 0.07 
+
+# Initialize matrix to store RSS values
+rss_mat <- matrix(NA, nrow = num_samples, ncol = num_samples)
+
+# Generate RSS values using a nested loop
+for (i in 1:num_samples) {
+  for (j in 1:num_samples) {
+    # Calculate RSS for the current sample using the formula (y1−βˆ0−βˆ1x1)2+(y2−βˆ0−βˆ1x2)2+...+(yn−βˆ0−βˆ1xn)2
+    residuals <- y - (b0_array[j] + b1_array[i] * x)
+    RSS <- sum(residuals^2)
+ 
+    # Store the RSS value in the matrix
+    rss_mat[i, j] <- RSS
+  }
+}
+
+# Print the matrix 
+print(rss_mat)
+
+
+
+```
+##Other ways: 
+find the minimum by discretizing 
+
+```{r Contour plot and 3D plot}
+
+#create a contour plot where x, y, z values are specified as below 
+
+contour(b0_array, b1_array, rss_mat, main = "Contour plot of RSS",
+        levels = seq(min(rss_mat), max(rss_mat), length.out = 10),
+        xlab = "b0", ylab = "b1", method = "flattest")
+points(b0_opt, b1_opt, col = "red", lwd = 5) #display the optimal b0 and b1 values in the plot 
+
+
+
+```
+```{r 3D plot}
+
+library(plot3D)
+
+
+# 3D Plot using persp3D with points3D overlay
+persp3D(b0_array, b1_array, rss_mat, phi = 25, theta = 35, col = c("blue", alpha = 0.6),
+        xlab = "b0", ylab = "b1", zlab = "RSS")
+
+# Overlay points using points3D 
+points3D(b1_opt, b0_opt, rss_opt, Add = TRUE, col = "red", size = 2, phi = 30, theta = 60, alpha = 0.8)
+
+
+
+```
+
+
+# Figure 3.3: "Randomness of the regression line"
+```{r}
+
+set.seed(123) # fix random seed for reproducibility
+
+# Number of data points
+num_points <- 100
+
+# Generate 100 random X values 
+X <- rnorm(num_points)
+
+# Generate Y values based on the model Y = 2 + 3X + ε with mean 0 
+epsilon <- rnorm(num_points, mean = 0, sd = 5)
+Y <- 2 + 3 * X + epsilon
+
+# Create the simulated dataset
+sim_dataset <- data.frame(X = X, Y = Y)
+
+# Print the simulated dataset
+print(sim_dataset)
+
+```
+
+```{r Generate 10 least squares lines}
+
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Number of least squares lines to generate
+num_lines <- 10
+
+# Plot the simulated dataset 
+plot(sim_dataset$X, sim_dataset$Y, main = "Simulated Dataset with Least Squares Lines",
+     xlab = "X", ylab = "Y")
+
+# Fit and plot ten least squares lines using a for loop generating random samples and fitting the least square lines. 
+for (i in 1:num_lines) {
+  # Generate random indices to sample from the dataset
+  sample_indices <- sample(1:nrow(sim_dataset), replace = TRUE)
+  
+  # Subset the dataset based on random indices
+  sampled_data <- sim_dataset[sample_indices, ]
+  
+  # Fit the least squares line
+  ls_line <- lm(Y ~ X, data = sampled_data)
+  
+  # Plot the least squares line with light blue color
+  abline(ls_line, col = "lightblue", lwd = 1)
+}
+
+# Fit and plot the true regression line in red on top of the least squares lines 
+true_regression <- lm(Y ~ X, data = sim_dataset)
+abline(true_regression, col = "red", lwd = 2)
+
+#you can also use the lapply function 
+
+```
+
+
+```{r Plot the true regression line and the least squares regression line}
+
+
+library(patchwork)
+
+# Fit the true regression line (without errors)
+true_regression <- lm(Y ~ X, data = sim_dataset)
+
+# Fit the least squares line
+least_squares_line <- lm(Y ~ X, data = sim_dataset)
+
+# Predict Y values using the least squares line. We do this to obtain values of Y for each corresponding value of X in the simulated dataset. 
+sim_dataset$Y_predicted <- predict(least_squares_line, newdata = sim_dataset)
+
+# Plot the true regression line and least squares line in a single plot
+combined_plot <- ggplot(sim_dataset, aes(x = X, y = Y)) +
+  geom_point() +
+  geom_abline(intercept = coef(true_regression)[1], slope = coef(true_regression)[2], col = "red", linetype = "solid", size = 1) +
+  geom_line(aes(y = Y_predicted + 0.2), col = "blue", linetype = "solid", size = 1) +  # Adjust the position of the true regression line
+  ggtitle("True Regression Line and Least Squares Line") +
+  xlab("X") + ylab("Y")
+
+# Print the combined plot
+print(combined_plot)
+
+
+
+```
+
+
+# Exercise Question. 8 - page 121 
+
+## (a)
+```{r}
+library(ISLR)
+
+data(Auto) #load the  Auto dataset 
+mpg_model = lm(mpg~horsepower,data=Auto)
+summary(mpg_model)
+
+#the p-value of the intercept and slope tells us that it is different from 0, thus rejecting the null hypothesis. 
+```
+
+### (i)
+
+There is strong evidence of a relationship between mpg (response) and horsepower (predictor) as the p-value for horsepower's is low (p-value: < 2.2e-16).
+
+
+### (ii)
+
+The strength of the relation between predictor and response is given by the Multiple R-squared. The value for this model is 0.6059. This means that approximately 60.59% of the variability in the response variable (mpg) can be explained by the predictor variable (horsepower). To calculate the residual error relative to the response we use the mean of mpg and the RSE.
+
+### (iii)
+The relationship is negative linear and the value for the coefficient of the predictor variable (horsepower) is -0.157845. So, for every unit increase in horsepowe, mpg tends to decrease by -0.157845. 
+
+### (iv)
+
+The mpg associated with horsepower of 98 can be given by the formula: 
+mpg = b0 (intercept) + b1 (coefficient of horsepower) * horsepower (98)
+mpg = 39.935861−0.157845)×98 = 24.45 mpg
+
+The 95% prediction interval is:
+```{r}
+
+#using predict function to calculate 95% prediction interval for the response variable (mpg) based on the fitted linear regression model mpg_model when the horsepower is set to 98.
+
+
+predict(mpg_model, data.frame(horsepower=c(98)), interval='prediction')
+
+#Takes into account the noise in the data, takes into account the variance in the data. 
+
+```
+
+The 95% confidence interval is:
+```{r}
+
+#using the predict function in R o calculate the 95% confidence interval for the predicted response variable (mpg) based on the fitted linear regression model mpg_model when the horsepower is set to 98.The result of this code will be the predicted value of mpg for a horsepower of 98, along with the associated 95% confidence interval. 
+
+predict(mpg_model, data.frame(horsepower=c(98)), interval='confidence')
+
+# Confidence interval into takes into account the mean. 
+
+```
+
+## (b)
+```{r}
+#create a scatter plot where 'mpg' is plotted against 'horsepower'
+plot(mpg~horsepower,main= "Scatter plot of mpg vs. horsepower", data=Auto)
+abline(mpg_model, lwd =3, col ="red") #overlay a straight regression line on the scatterplot. Set line width and color. 
+```
+
+## (c)
+```{r}
+#set the layout of the plotting region and create diagnostic plots to be arranged in a2X2 grid 
+
+par(mfrow=c(2,2)) 
+plot(mpg_model) 
+```
+Problems with the plot: 
+
+Residuals vs. Fitted Values: This plot helps check for linearity and homoscedasticity.Since it has a U shape, we can assume non-linearity. 
+Normal Q-Q Plot: This plot assesses the normality of the residuals. Our plot fits well into the 45 degree reference line. 
+Scale-Location (or Spread-Location) Plot: This plot is used to check for homoscedasticity. When the homoscedasticity assumption is violated, the “spread” of the points across predicted values are not the same, and indicates presence of outliers. 
+Residuals vs. Leverage Plot: This plot helps identify influential observations. In this case, we see some observations have higher leverage than the others. 
+
