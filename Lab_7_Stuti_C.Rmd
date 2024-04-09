@@ -1,0 +1,282 @@
+---
+title: ' Lab 7'
+author: "BKN680 Spring 2024"
+date: "Feb. 21, 2024"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+library(lme4)
+library(effects)
+library(dplyr) 
+library(ggplot2)
+library(lattice)
+```
+
+
+# Figure 1 of `lme4` vignette
+```{r}
+data("sleepstudy")
+head(sleepstudy)
+
+#REMEMBER TO PLOT DATA 
+
+#We use data set sleep study on the average reaction time per day for subjects in a sleep deprivation study. Subjects were deprived of sleep 3 hours starting on night 0, per night. Reaction is the response variable which records their time in (ms) on a series of tests given each day to each subject. 
+
+xyplot(Reaction ~ Days | Subject,                 # Plot Reaction against Days, conditioned on Subject
+       data = sleepstudy,                        
+       layout = c(9, 3),                         # Specify the layout of the panels (9 rows, 3 columns)
+       type = c("p", "r"),                       # Type of plot: 'p' for points and 'r' for regression lines
+       grid = TRUE                               # Add grid lines to the plot
+)                                              
+
+
+#Each subject’s reaction time increases approximately linearly with the number of sleep- deprived days. However, subjects also appear to vary in the slopes and intercepts of these relationships, which suggests a model with random slopes and intercepts.
+```
+
+
+# Figure for fixed-effect model
+```{r}
+
+#Fixed effects (linear regression model) of reaction time in a sleep deprivation study 
+
+library(ggplot2)
+library(dplyr)
+
+# Fit linear regression model
+lm_model <- lm(Reaction ~ Days, data = sleepstudy)
+
+# Predicted values
+sleepstudy$predicted <- predict(lm_model)
+
+# Residuals
+sleepstudy$residuals <- residuals(lm_model)
+
+# Fitted values
+sleepstudy$fitted <- fitted(lm_model)
+
+# Residuals vs Fitted plot
+residual_vs_fitted <- ggplot(sleepstudy, aes(x = fitted, y = residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") + #Add the 0 residual line
+  labs(x = "Fitted values", y = "Residuals", title = "Residuals vs Fitted")
+
+# Q-Q plot
+qq_plot <- ggplot(sleepstudy, aes(sample = residuals)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(title = "Q-Q Plot")
+
+# Boxplot by Subject
+boxplot_subject <- ggplot(sleepstudy, aes(x = as.factor(Subject), y = residuals)) +
+  geom_boxplot() +
+  labs(x = "Subject", y = "Residuals", title = "Boxplot by Subject")
+
+# Plot of Days vs Reaction with regression line
+reaction_vs_days <- ggplot(sleepstudy, aes(x = Days, y = Reaction)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(x = "No. of Days of Sleep Deprivation", y = "Average Reaction Time (ms)", title = "Days vs RT with regression line")
+
+# Combine plots
+plots <- list(residual_vs_fitted, qq_plot, boxplot_subject, reaction_vs_days)
+
+# Plot in a grid
+gridExtra::grid.arrange(grobs = plots, ncol = 2)
+
+
+```
+
+
+# Varying slope, varying intercept model (full covariance matrix)
+```{r}
+
+# Load necessary library
+library(lme4)
+
+# Fit the mixed-effects model with random intercept and slope using y ~ x + (x | ID)
+model <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy)
+summary(model)
+
+
+# Extract the covariance matrix
+cov_matrix <- as.matrix(VarCorr(model)$Subject)
+
+# Plot the covariance matrix using lattice
+levelplot(cov_matrix, main = "Covariance Matrix",
+          xlab = "Random Effect Group 1",
+          ylab = "Random Effect Group 2",
+          col.regions = heat.colors(100))
+
+#Covariance matrix is plotted to understand the relationships between the random effects, model comparison etc. 
+
+#Random effects correspond to the variability in the response variable (in this case, reaction time) that is not explained by the fixed effects (predictor variables such as Days) but is instead attributed to the grouping structure of the data.
+
+#"Group 1" and "Group 2" refer to the different levels of grouping for which the random effects are estimated. Specifically:
+
+#Group 1: Refers to the random effects associated with the intercepts. Each Subject has its own intercept, and the variability in these intercepts across subjects is captured by the random effect of Group 1.
+
+#Group 2: Refers to the random effects associated with the slopes of the Days variable. Similarly, each Subject has its own slope for the relationship between Days and reaction time, and the variability in these slopes across subjects is captured by the random effect of Group 2.
+
+```
+Fixed effects: 
+b1 = 251.405
+b2 = 10.467 
+
+Random effects: 
+σ1 = 24.741 
+σ2 = 5.922 
+σ = 25.592 (standard deviation)
+
+# Varying slope, varying intercept model (dignonal covariance matrix)
+```{r}
+
+library(lme4)
+library(lattice)
+
+# Fit the mixed effects model
+model <- lmer(Reaction ~ Days + (Days || Subject), data = sleepstudy) #subject is the random effect with both varuing slope and intercept 
+
+summary(model)
+
+# Extract the variance-covariance matrix of the random effects
+var_cov_matrix <- VarCorr(model)
+
+# Extract the diagonal elements (variances) of the random effects
+variances <- attr(var_cov_matrix$Subject, "stddev")^2 #square of each standard deviation to obtain the variance 
+
+# Create a diagonal covariance matrix
+cov_matrix <- diag(variances) # creates a diagonal covariance matrix using the variances obtained before. Constructs a square matrix with zeros everywhere except on the diagonal, where the variances are placed.
+
+# Create row and column names of the covariance matrix 
+rownames(cov_matrix) <- colnames(cov_matrix) <- names(var_cov_matrix$Subject)
+
+# Create a heatmap plot of the diagonal covariance matrix using lattice
+levelplot(cov_matrix, col.regions = heat.colors(200),
+          xlab = "Random Effect Variable", ylab = "Random Effect Variable",
+          main = "Diagonal Covariance Matrix")
+
+#The plot represents the diagonal covariance matrix of the random effects. In this matrix, each row and column corresponds to a random effect variable (in this case, the Subject). The heatmap visualizes the variances of the random effects (the diagonal elements of the covariance matrix).
+
+
+```
+
+
+## Plot regression lines by subject
+```{r}
+
+library(ggplot2)
+
+# Fit the linear regression model
+model <- lm(Reaction ~ Days + Subject, data = sleepstudy) #Fit a LR model with days as a predictor of reaction time, and factor by Subject 
+
+# Plot the data points with regression lines by subject
+ggplot(sleepstudy, aes(x = Days, y = Reaction, color = Subject)) +
+  geom_point() +  # Add data points
+  geom_smooth(method = "lm", se = TRUE) +  # Add regression lines without confidence intervals
+  labs(title = "Regression Lines by Subject", x = "Days", y = "Reaction") +
+  theme_minimal()
+
+
+```
+
+
+# Varying slope, fixed intercept
+```{r}
+
+library(ggplot2)
+library(lme4)
+
+# Fit the linear mixed-effects model y ~ x + (0 + x | ID)
+model <- lmer(Reaction ~ Days + (0 + Days | Subject), data = sleepstudy)
+summary(model)
+
+# Extract fixed effects (both intercept and slope)
+fixed_effects <- fixef(model)[1]
+
+# Extract random effects (slopes)
+random_effects <- ranef(model)$Subject[, "Days"]
+
+# Plot the data with varying slopes
+ggplot(sleepstudy, aes(x = Days, y = Reaction, color = Subject)) +
+  geom_point() +
+  geom_abline(intercept = fixed_effects, slope = random_effects, linetype = "solid") +
+  labs(title = "Varying Slopes with Fixed Intercept",
+       x = "No. of Days of Sleep Deprivation",
+       y = "Reaction Time") +
+  theme_minimal()
+
+
+
+
+```
+
+
+# Fixed slope, varying intercept
+```{r}
+
+
+library(ggplot2)
+library(lme4)
+
+# Fit the linear mixed-effects model
+model <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy)
+
+# Extract random effects directly
+random_effects <- ranef(model)
+
+# Extract fixed effects (slope)
+fixed_slope <- fixef(model)[2] 
+random_intercepts <- ranef(model)$Subject[, "(Intercept)"]
+
+# Plot the data with varying intercepts
+ggplot(sleepstudy, aes(x = Days, y = Reaction, color = Subject)) +
+  geom_point() +
+  geom_hline(data = data.frame(intercept = random_intercepts, slope = fixed_slope), aes(yintercept = intercept), linetype = "solid", color = "black") +
+  labs(title = "Varying Intercepts with Fixed Slope",
+       x = "No. of Days of Sleep Deprivation",
+       y = "Reaction Time") +
+  theme_minimal()
+
+
+
+
+```
+
+
+# Model comparison
+```{r}
+
+# Fit the four linear mixed-effects models
+model1 <- lmer(Reaction ~ Days + (1 | Subject), data = sleepstudy) #fixed slope varying intercept
+model2 <- lmer(Reaction ~ Days + (Days || Subject), data = sleepstudy) # diagonal covariance 
+model3 <- lmer(Reaction ~ Days + (Days | Subject), data = sleepstudy) # full covariance matrix
+model4 <- lmer(Reaction ~ Days + (0 + Days | Subject), data = sleepstudy) # fixed intercept, varying slope 
+
+# Compare the models using ANOVA
+anova(model1, model2, model3, model4)
+
+```
+Model 2 has the lowest AIC and BIC hence it is a good fit. 
+
+```{r}
+
+#Comparing residuals from the fixed effect and mixed effects models 
+
+# Get fitted values and residuals from Model 2
+fitted_values <- fitted(model2)
+residuals <- residuals(model2)
+
+# Create a scatter plot of residuals vs fitted values of mixed effects model 
+mixed_plot<-plot(fitted_values, residuals,
+     main = "Residuals vs Fitted Values",
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+abline(h = 0, col = "red", lty = 2)  # Add a horizontal line at y = 0 for reference
+
+
+```
+We see that the residuals v/s fitted values plot appears to be much better fitted with lesser variance compared to the linear regression (fixed effects) plot. 
