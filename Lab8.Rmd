@@ -1,0 +1,281 @@
+---
+title: ' Lab 8'
+author: "Stuti C"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, warning=FALSE, message=FALSE}
+library(ISLR)
+library(glmnet)
+library(ggplot2)
+
+```
+
+# Figure 6.4 - Left
+```{r}
+
+#Load data 
+data = Credit
+View(data)
+
+# Load the glmnet package
+library(glmnet)
+
+
+# Prepare the data
+X <- as.matrix(Credit[, -1])  # Predictor variables (excluding the response variable)
+
+# Response variable 
+y <- Credit$Balance           
+
+
+# Perform k-fold cross-validation for ridge regression
+# nfolds specifies the number of folds for cross-validation 
+cv_ridge <- cv.glmnet(X, y, alpha = 0, nfolds = 10)  
+
+# Plot the cross-validated error as a function of lambda
+plot(cv_ridge)
+
+# Get the lambda value that minimizes the mean squared error (MSE)
+optimal_lambda <- cv_ridge$lambda.min
+cat("Optimal lambda value:", optimal_lambda, "\n")
+
+# Fit the ridge regression model with the optimal lambda value
+ridge_model <- glmnet(X, y, alpha = 0, lambda = optimal_lambda)
+
+# Print summary of the ridge model
+print(ridge_model)
+
+
+# Convert 'Student' to a factor 
+Credit$Student <- as.factor(Credit$Student)
+
+# Prepare the data for glmnet: x matrix of predictors and y response variable
+x <- model.matrix(Balance ~ Student + Income + Limit + Rating, data = Credit)[,-1]  # Remove intercept
+y <- Credit$Balance
+
+# Standardize the predictors
+x_standardized <- scale(x)
+
+# Fit the ridge regression model with standardized predictors
+ridge_fit <- glmnet(x_standardized, y, alpha = 0, standardize = FALSE) # No need to standardize again in glmnet
+
+# Extract coefficients for all lambda values
+coef_matrix <- as.matrix(coef(ridge_fit))
+
+# Create a dataframe for ggplot
+# We use log(lambda) because lambda values span several orders of magnitude
+plot_df <- data.frame(
+  Lambda = rep(log(ridge_fit$lambda), each = nrow(coef_matrix)),
+  Coefficient = as.vector(coef_matrix),
+  Variable = rep(rownames(coef_matrix), length(ridge_fit$lambda))
+)
+
+# Filter out the row corresponding to the intercept (first row of coefficients)
+plot_df <- plot_df[-1, ]
+
+
+#'Student' is converted to 'StudentYes' after model.matrix processing
+# Filter for the variables of interest
+plot_df <- plot_df[plot_df$Variable %in% c("StudentYes", "Income", "Limit", "Rating"), ]
+
+# Plot using ggplot2 with specified line types and colors
+ggplot(plot_df, aes(x = Lambda, y = Coefficient, color = Variable, linetype = Variable)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("Income" = "black", "Limit" = "red", "Rating" = "blue", "StudentYes" = "orange")) +
+  scale_linetype_manual(values = c("Income" = "solid", "Limit" = "dashed", "Rating" = "dotted", "StudentYes" = "twodash")) +
+  labs(x = "Log(Lambda)", y = "Standardized Coefficients", title = "Standardized Coefficients v/s Lambda") +
+  theme_minimal()
+
+
+
+```
+
+
+# Figure 6.4 - Right
+```{r}
+
+library(ISLR)
+library(glmnet)
+
+# Load the Credit dataset
+data("Credit")
+
+# Convert 'Student' to a factor with levels 'No' and 'Yes'
+Credit$Student <- factor(Credit$Student, levels = c("No", "Yes"))
+
+# Prepare the data for glmnet: x matrix of predictors and y response variable
+x <- model.matrix(Balance ~ Student + Income + Limit + Rating, data = Credit)  # Include the intercept
+y <- Credit$Balance
+
+# Fit the ridge model for a range of lambda values (L1 penalty, alpha = 0)
+ridge_fit <- glmnet(x, y, alpha = 0)
+
+# Calculate the L2 norm of the coefficients for the least squares (unregularized) model
+# Fit an OLS model to get the coefficients
+ols_fit <- lm(Balance ~ Student + Income + Limit + Rating, data = Credit)
+# Coefficients of OLS model excluding the intercept
+beta_ols <- coef(ols_fit)[-1]
+# L2 norm of the OLS coefficients
+l2_norm_ols <- sqrt(sum(beta_ols^2))
+
+# Calculate the L2 norm of the coefficients at each lambda for Ridge
+ridge_coefs <- predict(ridge_fit, type="coefficients", s=ridge_fit$lambda)
+l2_norm_ridge <- apply(ridge_coefs[-1, ], 2, function(coefs) sqrt(sum(coefs^2)))
+
+# Normalize the L2 norms by the L2 norm of the OLS coefficients
+l2_norm_ratio <- l2_norm_ridge / l2_norm_ols
+
+# Plotting
+plot_df <- data.frame(
+  L2NormRatio = l2_norm_ratio,
+  Lambda = ridge_fit$lambda,
+  Student = ridge_coefs["StudentYes", ],
+  Income = ridge_coefs["Income", ],
+  Limit = ridge_coefs["Limit", ],
+  Rating = ridge_coefs["Rating", ]
+)
+
+# Convert data to long format
+plot_df_long <- reshape(plot_df, varying = list(c("Income", "Limit", "Rating", "Student")), direction = "long", 
+                        v.names = "Coefficient", idvar = c("L2NormRatio", "Lambda"), timevar = "Variable")
+
+# Plot the path
+plot(plot_df_long$L2NormRatio, plot_df_long$Coefficient, type='n', ylim=c(-300, 400), xlab="L2 Norm Ratio", ylab="Standardized Coefficients")
+
+# Colors for lines
+line_colors <- c("black", "red", "blue", "orange")
+line_types <- c(1, 2, 3, 4)
+
+# Plot lines for each variable
+for (variable in unique(plot_df_long$Variable)) {
+  lines(plot_df_long$L2NormRatio[plot_df_long$Variable == variable], 
+        plot_df_long$Coefficient[plot_df_long$Variable == variable],
+        col = line_colors[variable], lty = line_types[variable])
+}
+
+# Adding a legend
+legend("topright", legend=c("Income", "Limit", "Rating", "StudentYes"), col=line_colors, lty=line_types)
+
+````
+
+
+
+# Figure 6.6 - Left
+```{r} 
+
+# Convert 'Student' to a factor 
+Credit$Student <- as.factor(Credit$Student)
+
+# Prepare the data for glmnet: x matrix of predictors and y response variable
+x <- model.matrix(Balance ~ Student + Income + Limit + Rating, data = Credit)[,-1]  # Remove intercept
+y <- Credit$Balance
+
+# Standardize the predictors
+x_standardized <- scale(x)
+
+# Fit the lasso regression model with standardized predictors
+ridge_fit <- glmnet(x_standardized, y, alpha = 1, standardize = FALSE) # No need to standardize again in glmnet
+
+# Extract coefficients for all lambda values
+coef_matrix <- as.matrix(coef(ridge_fit))
+
+# Create a dataframe for ggplot
+# We use log(lambda) because lambda values span several orders of magnitude
+plot_df <- data.frame(
+  Lambda = rep(log(ridge_fit$lambda), each = nrow(coef_matrix)),
+  Coefficient = as.vector(coef_matrix),
+  Variable = rep(rownames(coef_matrix), length(ridge_fit$lambda))
+)
+
+# Filter out the row corresponding to the intercept (first row of coefficients)
+plot_df <- plot_df[-1, ]
+
+
+#'Student' is converted to 'StudentYes' after model.matrix processing
+# Filter for the variables of interest
+plot_df <- plot_df[plot_df$Variable %in% c("StudentYes", "Income", "Limit", "Rating"), ]
+
+# Plot using ggplot2 with specified line types and colors
+ggplot(plot_df, aes(x = Lambda, y = Coefficient, color = Variable, linetype = Variable)) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("Income" = "black", "Limit" = "red", "Rating" = "blue", "StudentYes" = "orange")) +
+  scale_linetype_manual(values = c("Income" = "solid", "Limit" = "dashed", "Rating" = "dotted", "StudentYes" = "twodash")) +
+  labs(x = "Log(Lambda)", y = "Standardized Coefficients", title = "Standardized Coefficients v/s Lambda") +
+  theme_minimal()
+
+
+
+```
+
+
+# Figure 6.6 - Right
+```{r}
+
+
+library(ISLR)
+library(glmnet)
+
+# Load the Credit dataset
+data("Credit")
+
+# Convert 'Student' to a factor with levels 'No' and 'Yes'
+Credit$Student <- factor(Credit$Student, levels = c("No", "Yes"))
+
+# Prepare the data for glmnet: x matrix of predictors and y response variable
+x <- model.matrix(Balance ~ Student + Income + Limit + Rating, data = Credit)  # Include the intercept
+y <- Credit$Balance
+
+# Fit the Lasso model for a range of lambda values (L2 penalty, alpha = 1)
+lasso_fit <- glmnet(x, y, alpha = 1)
+
+# Calculate the L2 norm of the coefficients for the least squares (unregularized) model
+# Fit an OLS model to get the coefficients
+ols_fit <- lm(Balance ~ Student + Income + Limit + Rating, data = Credit)
+# Coefficients of OLS model excluding the intercept
+beta_ols <- coef(ols_fit)[-1]
+# L2 norm of the OLS coefficients
+l2_norm_ols <- sqrt(sum(beta_ols^2))
+
+# Calculate the L2 norm of the coefficients at each lambda for Lasso
+lasso_coefs <- predict(lasso_fit, type="coefficients", s=lasso_fit$lambda)
+l2_norm_lasso <- apply(lasso_coefs[-1, ], 2, function(coefs) sqrt(sum(coefs^2)))
+
+# Normalize the L2 norms by the L2 norm of the OLS coefficients
+l2_norm_ratio <- l2_norm_lasso / l2_norm_ols
+# Plotting
+plot_df <- data.frame(
+  L2NormRatio = l2_norm_ratio,
+  Lambda = lasso_fit$lambda,
+  Student = lasso_coefs["StudentYes", ],
+  Income = lasso_coefs["Income", ],
+  Limit = lasso_coefs["Limit", ],
+  Rating = lasso_coefs["Rating", ]
+)
+
+# Convert data to long format without using reshape2
+plot_df_long <- reshape(plot_df, varying = list(c("Income", "Limit", "Rating", "Student")), direction = "long", 
+                        v.names = "Coefficient", idvar = c("L2NormRatio", "Lambda"), timevar = "Variable")
+
+# Plot the path
+plot(plot_df_long$L2NormRatio, plot_df_long$Coefficient, type='n', ylim=c(-300, 400), xlab="L2 Norm Ratio", ylab="Standardized Coefficients")
+
+# Colors for lines
+line_colors <- c("black", "red", "blue", "orange")
+line_types <- c(1, 2, 3, 4)
+
+# Plot lines for each variable
+for (variable in unique(plot_df_long$Variable)) {
+  lines(plot_df_long$L2NormRatio[plot_df_long$Variable == variable], 
+        plot_df_long$Coefficient[plot_df_long$Variable == variable],
+        col = line_colors[variable], lty = line_types[variable])
+}
+
+# Adding a legend
+legend("topright", legend=c("Income", "Limit", "Rating", "StudentYes"), col=line_colors, lty=line_types)
+
+
+```
+
