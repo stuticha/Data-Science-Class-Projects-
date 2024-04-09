@@ -1,0 +1,247 @@
+---
+title: ' Lab 3'
+author: "BKN680 Spring 2024"
+date: "Jan. 24, 2024"
+output:
+  html_document:
+    df_print: paged
+---
+- Reproduce figure 3.7 (add the datapoints and use different markers for “student/not student”)
+- Exercises 9 (except d) and 10 (except h), page 121
+
+
+```{r setup, include=FALSE}
+library(ISLR)
+library(dplyr)
+library(ggplot2)
+```
+
+
+# Figure 3.7
+
+```{r}
+data("Credit")
+View(Credit)
+```
+
+```{r}
+
+# Load necessary libraries
+library(ggplot2)
+
+#Balance is the response variable and income and student are predictor variables. Create regression lines with the same slope (b1) but different intercepts (b0). In this model, we are testing the hypothesis of whether students and non-students have the same balance given income. Statistically significant means that the balance is non-zero. 
+
+# Define the model coefficients 
+b0_student <- coef(lm(Balance ~ Income + Student, data = Credit))[1] 
+
+#b0_student represents the intercept (b0) when 'Student' variable is included in the model. 
+
+
+b1 <- coef(lm(Balance ~ Income + Student, data = Credit))[2]
+
+#b1 represents the coefficient associated with income, which is same for both students and non-students (b1), or the slope. [2] is used to select the coefficient. 
+
+b2_student <- coef(lm(Balance ~ Income + Student, data = Credit))[3]
+
+#b2_student represents the additional intercept term 'b2' when the ith person is a student. 
+
+
+# Create the plot with regression lines and different shapes for students v/s non-students: 
+ggplot(Credit, aes(x = Income, y = Balance, shape = factor(Student), color = factor(Student))) +
+  geom_point() +
+  geom_abline(aes(slope = b1, intercept = b0_student), color = "darkblue") + #Add a dark blue regression line for non-student where,
+#balance (y) = b1*x + b0 
+  geom_abline(aes(slope = b1, intercept = b2_student + b0_student), linetype = "solid", color = "red") + #Add a red regression line for student where, 
+  #balance(y) = b1*x b2 + b0 
+  scale_color_manual(values = c("Non-Student" = "darkblue", "Student" = "red"), guide = FALSE) +
+  labs(title = "Balance vs Income for Students and Non-Students",
+       x = "Income",
+       y = "Balance") +
+  theme_minimal()
+
+
+
+```
+
+In the above the slope (b1) is the same for both student and non-student, but the intercept (b0) is different: 
+
+b0_student = in case of student 
+b2_student + b0_student = in the case of non-student
+
+```{r}
+
+# Fit the linear regression model with interaction term (income)
+model <- lm(Balance ~ Income * Student, data = Credit)
+
+# Extract the coefficients
+b0 <- coef(model)[1]  # Intercept b0 for non-students 
+b1 <- coef(model)[2]  # Slope b1 for Income 
+b2 <- coef(model)[3]  # Difference in intercepts for student v/s non-student. This represents how much the intercept changes when person is a student compared to when they are not a student. 
+b3 <- coef(model)[4]  # Difference in slopes for student v/s non-student. This represents how much the slope changes for students compared to non-students. 
+
+# Create a new data frame for plotting regression lines with a sequnce of income values 
+plot_data <- data.frame(Income = seq(min(Credit$Income), max(Credit$Income), length.out = 100)) #100 observations with maximum and minimum values of income
+plot_data$Balance_non_student <- b0 + b1 * plot_data$Income #using the formula in 3.34 in case of non-student, adding an interaction term 'income' 
+plot_data$Balance_student <- (b0 + b2) + (b1 + b3) * plot_data$Income #using the formula in 3.34 in case of student, adding an interaction term 'income'
+
+# Plot the regression lines using ggplot2
+library(ggplot2)
+ggplot() +  
+  geom_point(data = Credit, aes(x = Income, y = Balance, shape = factor(Student), color = factor(Student))) + #use color and shapes to differentiate between student and non-student 
+  
+  #Add regression lines 
+  geom_line(data = plot_data, aes(x = Income, y = Balance_non_student), color = "darkblue", linetype = "solid") +
+  geom_line(data = plot_data, aes(x = Income, y = Balance_student), color = "red", linetype = "solid") +
+  labs(title = "Balance vs Income for Students and Non-Students",
+       x = "Income",
+       y = "Balance") +
+  theme_minimal()
+
+
+
+```
+In the above, both the slope (b1) and the intercept (b0) is different is for students and non-student:  
+
+Non_student 
+Intercept: b0 
+Slope: b1 
+
+Student
+Intercept: b0 + b2  
+Slope: b1 + b3 
+
+
+# Exercise 9
+
+```{r}
+data("Auto")
+head(Auto)
+```
+
+## a) Produce a scatterplot matrix which includes all of the variables in the data set. 
+
+```{r}
+
+data(Auto)
+
+# Create a scatterplot matrix using all rows and columns i.e. variables (9) available in the dataset. 
+pairs(Auto[,1:9])
+
+
+```
+
+## b)
+
+```{r}
+# Compute the matrix of correlations, excluding the 'name' variable
+
+# Identify numeric columns
+#You can also use the GG
+numeric_cols <- sapply(Auto, is.numeric)
+
+# Compute the correlation matrix, excluding non-numeric, qualitative variables
+correlation_matrix <- cor(Auto[, numeric_cols])
+
+# Print the correlation matrix
+print(correlation_matrix)
+
+
+```
+
+## c) Use the lm() function to perform a multiple linear regression with mpg as the response and all other variables except name as the predictors. Use the summary() function to print the results. Comment on the output. For instance:
+i. Is there a relationship between the predictors and the response?
+ii. Which predictors appear to have a statistically significant relationship to the response?
+iii. What does the coefficient for the year variable suggest?
+
+```{r}
+mpg_model = lm(mpg~.-name,data=Auto)
+summary(mpg_model)
+```
+   i. Yes, there is a relationship between the predictors (cylinder, displacement etc.) and the response variable mpg. p-value: < 3.3e-16 for a F-statistic of 252.4 also means significant relationship between predictors and respone. 
+   
+   ii. Displacement, weight, year and origin are statistically significant as their p-values are below 0.05
+   
+   iii. The coefficient for the year variable has a positive value. This means that every unit increase in year (i.e. with increase in 1 year) will be associated with 0.750 mpg increase in mpg of the vehicles, when other variables are constant. 
+
+
+
+e) Use the * and : symbols to fit linear regression models with interaction effects. Do any interactions appear to be statistically significant?
+```{r}
+mpg_interaction = lm(mpg~.-name + year:cylinders + acceleration:horsepower + cylinders:horsepower, data=Auto)
+summary(mpg_interaction)
+
+#using colon gives you the interaction between the specific terms and each individual term. Using * between the interaction terms gives the interaction of all the terms. 
+
+```
+`cylinders:year` and `cylinders:horsepower` are statistically significant. The R^2 metric has increased from 0.82 to 0.86 upon adding interaction terms. This suggests that the model better explains the variance in the response variable with the inclusion of interaction effects.
+
+
+## f) Try a few different transformations of the variables, such as log(X), √X, X^2. Comment on your findings.
+
+```{r}
+mpg_transform = lm(mpg~.-name + year:cylinders + I(horsepower^2)
++ I(acceleration^2),data=Auto) #I here applies a mathematical transformation or operation e.g.squaring. 
+summary(mpg_transform)
+
+mpg_transform_2 = lm(mpg~.-name-cylinders + log(weight) + log(acceleration) +
+sqrt(displacement),data=Auto)
+summary(mpg_transform_2)
+```
+Findings: applying transformations can help to increase the R^2 of the overall model. 
+
+
+# Ex. 10
+
+Fit a multiple regression model to predict Sales using Price,
+Urban, and US
+```{r}
+data("Carseats")
+head(Carseats)
+```
+
+## a) Fit a multiple regression model to predict Sales using Price, Urban, and US
+
+```{r}
+carseats_multi_model = lm(Sales~Price+Urban+US,data=Carseats)
+summary(carseats_multi_model)
+```
+
+## b) Provide an interpretation of each coefficient in the model. Be careful—some of the variables in the model are qualitative!
+
+1. Intercept: When all predictor variables (Price, Urban, US) are zero, the estimated average value of Sales is 13.043469 units. This intercept represents the estimated sales when the price, urban status, and US status are at baseline. 
+2. The slope of price is negative which means that with every one unit increase in 'Price', there is an estimated decrease in 'Sales' of 0.0544, thus as price increases, sales tends to decrease. 
+
+3. Both Urban Yes and US Yes are qualitative variables. Urban Yes represents the difference in average 'Sales' in urban compared to rural or non-urban areas. Whereas US Yes represents the 'Sales' of cars in the US and in other countries. However, only US Yes has a positive, and statistically significant effect on sales.  
+
+## c) Write out the model in equation form, being careful to handle the qualitative variables properly.
+
+
+Sales (y) = 13.04 (b0) + -0.05Price (b1x1) \ + -0.02Urban(Yes:1,No:0) (b2x2) + 1.20US(Yes:1,No:0) (b3x3)
+ 
+
+## d) For which of the predictors can you reject the null hypothesis H0 :βj=0?
+
+```{r}
+
+#Using all variables in the dataset. 
+carseats_all_var = lm(Sales~.,data=Carseats)
+summary(carseats_all_var)
+```
+The null hypothesis can be rejected for variables which show a statistically significant effect on the response variable i.e. sales. Null hypothesis can be rejected for `CompPrice`, `Income`, `Advertising`, `Price`, `ShelvelocGood`, `ShelvelocMedium` and `Age.
+
+## e) On the basis of your response to the previous question, fit a smaller model that only uses the predictors for which there is evidence of association with the outcome.
+
+```{r}
+carseats_all_predictors = lm(Sales~.-Education-Urban-US-Population,data=Carseats)
+summary(carseats_all_predictors)
+```
+
+## f) How well do the models in (a) and (e) fit the data?
+
+The Residual Standard Error goes down from 2.47  in model a to 1.02 in model e when we only use the predictors rejecting the null hypothesis. The R^2 statistic goes up from 0.24 in a to 0.872 in e and the F-statistic goes up from 41.52 to 381.4. Based on these statistical evidence parameters, we can clearly see that 'e' is a much better fit model than 'a' for this dataset. 
+
+## g) Using the model from (e), obtain 95% confidence intervals for the coefficient(s).
+
+```{r}
+confint(carseats_all_predictors)
+```
